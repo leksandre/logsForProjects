@@ -237,3 +237,103 @@ defined('dataDogUrlForGettingLog') || define(
             ],
         ];
     }
+    
+    
+    
+    
+public static function clearCyclesLnkAndCache() {
+
+        if (!isset(self::$last_gc_cycle)) {
+            self::$last_gc_cycle = time() - (24 * 3600);
+            //echo 'start geting gc_collect_cycles();';
+        }
+
+        if (function_exists('gc_collect_cycles')) {
+            $time = time();
+            if ($time - self::$last_gc_cycle > 300) {//300 - could be like system constants
+                //every 5 minutes we make
+                self::$last_gc_cycle = $time;
+                gc_collect_cycles();
+                //echo 'start gc_collect_cycles();';
+                if (PHP_VERSION_ID >= 70000) {
+                    if (function_exists('gc_mem_caches')) {
+                        gc_mem_caches();
+                    }
+                }
+            }
+            //echo self::$last_gc_cycle.'||';
+
+        }
+
+        //force run gc
+        //        if (function_exists('gc_collect_cycles')) {
+        //            gc_collect_cycles();
+        //            if (PHP_VERSION_ID >= 70000) {
+        //                gc_mem_caches();
+        //            }
+        //        }
+
+    }
+    
+
+public function actionStart() {//rabbit function
+ $receiver = new RabbitMessages($conf['RabbitServers']['Triggers']['host'],
+                                      conf['port'],
+                                      conf['login'],
+                                      conf['password'],
+                                      'forListener',
+                                      'exchListener');
+                               
+        $callback = function($msg)
+        {
+            $bodyJson = json_decode($msg->body, true);
+            Utils::clearCyclesLnkAndCache();
+
+            try {
+                $curl = curl_init();
+                $curlopt_url = API_URL_DATADOG_LOGS . API_TOKEN_DATADOG_LOGS;
+    
+                curl_setopt_array($curl, [
+                    CURLOPT_URL => $curlopt_url,
+                    CURLOPT_POST => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_ENCODING => "",
+                    CURLOPT_MAXREDIRS => 10,
+                    CURLOPT_TIMEOUT => 30,
+                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                    CURLOPT_CUSTOMREQUEST => "POST",
+                ]);
+
+                //$bodyJson example - '{"message":"json formatted log", "ddtags":"env:my-env,user:my-user", "ddsource":"my-integration", "hostname":"my-hostname", "portal":"my-hostname", "service":"my-service"}';
+         
+
+                curl_setopt($curl, CURLOPT_POSTFIELDS, $bodyJson);
+                curl_setopt($curl, CURLOPT_CUSTOMREQUEST, "POST");
+                curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+                curl_setopt($curl, CURLOPT_HTTPHEADER, ['Content-Type: application/json; charset=utf-8']);
+
+                $response = curl_exec($curl);
+                $err = curl_error($curl);
+                //dump($response);
+                //dump($err);
+                $httpStatus = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+                //dump($httpStatus);
+                curl_close($curl);
+                if (intval($httpStatus) == "200") {
+                } else {
+                    $this->writeItInBase($err, $response, $bodyJson);
+                }
+
+            } catch (Throwable $t) {
+                $this->writeItInBase([$t->getMessage()]);
+            }
+
+            $msg->delivery_info['channel']->basic_ack($msg->delivery_info['delivery_tag']);
+        };
+
+        $receiver->setCallback($callback);
+        $receiver->listen('logs');
+
+    }       
+                                      
+                                      
