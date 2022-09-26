@@ -1,0 +1,38 @@
+<?php
+
+
+
+ try {
+            //add server
+            $SERVER = getenv('SERVER', true) ? : getenv('SERVER');
+            //add time
+            $time = date('Y-m-d H:i:s');
+
+            $newOrganizer = new OrganizerRabbitSimple();
+            //add category
+            $category = $newOrganizer->getCategoryByCode($code);
+            $newOrganizer->addItInRabbitQueueForLogs(json_encode([
+                                                               // standart params
+                                                               "message" => $time." [blabla] [$category] ".$initiator,
+                                                               "level" => $category,
+                                                               "category" => $category,
+                                                               "time" => $time,
+                                                                // new extended params
+                                                               "hostname" => isset($params['client_portal']) ? $params['client_portal'] : '',
+                                                               "server" => isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : '',
+                                                               "host" => isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '',
+                                                               "ip_addr" => isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '',
+                                                               "service" => $initiator,
+                                                               "mbst_server" => $SERVER,
+                                                                // params for outgoing api calls
+                                                               "errorsOfExecuteOperation" => ($errors),
+                                                               "params" => ($params),
+                                                           ], true));//, 'logs'//'logs' should be changed to another queue logsApiController later
+
+
+        } catch (Throwable $e) {
+            Yii::log($e->getMessage(), 'error');
+        }
+        
+        
+?>
