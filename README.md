@@ -40,6 +40,7 @@ defined('dataDogUrlForGettingLog') || define(
                     
                     
    //p3
+   
    //p31
     public function error($code, $message) : array
     {
